@@ -1,0 +1,82 @@
+#!/bin/python3
+
+# apt install xclip
+# Necesario todo estos modulos
+import openai
+import argparse
+import os
+import pyperclip
+
+# Establecer la clave de la API
+openai.api_key = ''
+
+def respuesta_completa(content):
+	response = openai.ChatCompletion.create(
+		model='gpt-3.5-turbo',
+		messages=[{'role': 'user', 'content': content}]
+        )
+	respuesta = response['choices'][0]['message']['content']
+	
+	return respuesta
+
+def respuesta_streaming(content):
+	response = openai.ChatCompletion.create(
+		model='gpt-3.5-turbo',
+		messages=[{'role': 'user', 'content': content}],
+		stream=True
+	)
+	for chunk in response:
+		if chunk['choices'][0]['finish_reason'] != 'stop':
+			respuesta = chunk['choices'][0]['delta']['content']
+			print(respuesta, end='', flush=True)
+def segundo_plano():
+	pid = os.fork()
+	if pid != 0:
+		exit()
+
+
+def generar_frase(content, use_complete_response, output_file, copy_to_clipboard):
+
+	if use_complete_response or copy_to_clipboard or output_file:
+		
+		if copy_to_clipboard:
+			segundo_plano()
+			respuesta = respuesta_completa(content)
+			pyperclip.copy(respuesta)
+			exit()
+		if output_file:
+			segundo_plano()
+			respuesta = respuesta_completa(content)
+
+			with open(output_file, 'w') as file:
+				file.write(respuesta)
+				exit()
+		else:
+			print(respuesta_completa(content))
+
+	else:
+
+		respuesta_streaming(content)
+
+if __name__ == "__main__":
+	parser = argparse.ArgumentParser(description="Genera frases utilizando GPT-3.5")
+	parser.add_argument("-q", action="store_true", help="Obtener respuesta completa en lugar de usar streaming")
+	parser.add_argument("-c", action="store_true", help="Copiar respuesta al portapapeles (incompatible con -f)")
+	parser.add_argument("-f", metavar="archivo.txt", help="Guardar respuesta en un archivo de texto")
+	parser.add_argument("-p", metavar="\"prompt\"", help="Definir un prompt")
+	args = parser.parse_args()
+
+	if args.p:
+		input_content = ' '.join(args.p)
+		generar_frase(input_content, args.q, args.f, args.c)
+		print(f"\n")
+	else:
+		while True:
+
+			input_content = input("> ")
+
+			if input_content.lower() == 'salir':
+				exit()
+
+			generar_frase(input_content, args.q, args.f, args.c)
+			print(f"\n")
